@@ -1,0 +1,265 @@
+---
+title: 'Stat 202, Project 2: Biking Weather'
+author:
+- Jessica Li
+- jli6
+date: "Due 4/18/18 at 11:59 pm"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
+###########################
+# RUN THIS BEFORE STARTING
+###########################
+
+library("tidyverse")
+library("knitr")
+library("pander") 
+library("car")
+library("tinytex")
+```
+
+```{r, include=FALSE}
+###########################
+# STYLE EDITS: IGNORE THIS
+###########################
+
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+knitr::opts_chunk$set(echo=FALSE) # set echo=FALSE to hide code from html/pdf output
+
+```
+#  Introduction
+
+There are many ways in which people travel around the world, through buses, airplanes, cars and our own feet. Unfortunately, one method is always forgotten: biking.Biking is a combination of fun, exercise, and efficiency. Cities around the world see the potential that bikes have on reducing population and increasing the mobility of the constituents. I am extremely interested in this study because the first of all, the study collects data around an area where I commonly travel to Washington D.C. and V.A. I also am very
+supportive of a body positive approach as well as an environmentally friendly way of travel and would like there to be more casual bikers in the cities rather than gas-exhuastive cars. What we are trying to predict is actually whether or not there are adn what are the group differences in the number of casual users depending on the daily weather and the day of the week. The reason this is important is because it allows the bikes to be more readily available to share and to be charged on certain days that are more or less popular.
+
+
+# Exploratory Data Analysis
+
+## Data
+
+
+You can view the different project scenarios and variable descriptions on Canvas. 
+
++ Choose a scenario and load in the data.
++ Nicely print the first few lines of data. 
+
+
+```{r, message=FALSE}
+# Reading the data
+data_location <- "http://stat.cmu.edu/202/data/bikesharing_project2.csv"
+bikes <- read_csv(data_location)
+
+# Converting categorical variables to factors with meaningful levels
+weekday_names <- c("Sun", "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat")
+weather_type <- c("clear", "misty", "rain/snow")
+
+bikes <- bikes %>% mutate(Day = factor(Day,
+                                       levels = 0:6,
+                                       labels = weekday_names),
+                          Weather = factor(Weather,
+                                           levels = 1:3,
+                                           labels = weather_type))
+
+# Examine data
+length(bikes$Casual)
+firstbikerides<- kable(head(bikes)) # get a table of the first 6 lines of data
+firstbikerides
+
+```
+
+In the data, we analyse a random sample of 951 bike riders. We examine the relationship between the response variable, the number of bikeriders that day, and two explanatory variables, also known as the predictors of interest: the weather and the day of the week. 
+
+Casual is total number of bikeriders that used the shared bike a specific day. The weather are expressed with 1 = clear, few clouds, partly cloudy; 2 = mist & cloudy, mist & broken clouds, mist & few clouds, mist; 3 = light snow, light rain & thunderstorm & scattered clouds, light rain & scattered clouds, and the Day is the day of the week (0 = Sunday ... 6 = Saturday).
+
+## Univariate exploration
+
+Now, **for each variable**:
+
+```{r, fig.height=4, fig.width=12}
+par(mfrow=c(2, 2)) # for 3 graphs in a 2x2 table
+#######
+#GRAPHS
+#######
+#2 barplots - Categorical
+counts1 <- table(pull(bikes, "Day"))
+barplot(counts1, main= "Distribution of Day",xlab= "Day of the Week" ,ylab= "Number of People")
+counts2 <- table(bikes$Weather)
+barplot(counts2, main= "Distribution of Weather",xlab= "Type of Weather" ,ylab= "Number of People" )
+
+#1 histogram - Quantitative
+hist(bikes$Casual,
+     main = "Casual Bike Rides",
+     xlab = "Number of Riders")
+
+#######
+#TABLES
+#######
+# Categorical
+cat.vars <- bikes %>% count(Weather)
+kable(cat.vars, caption = "Counts ")
+cat.vars <- bikes %>% count(Day)
+kable(cat.vars, caption = "Counts ")
+cat.vars <- bikes %>% count(Day,Weather)
+kable(cat.vars, caption = "Counts ")
+
+# Quantitative
+x1 <- bikes %>%
+  dplyr::summarize(Min  = min(Casual, na.rm = TRUE),
+  Q1 = quantile(Casual)[2],
+  Median = quantile(Casual)[3],
+  Mean = mean(Casual, na.rm = TRUE),
+  Q3 = quantile(Casual)[4],
+  Max = max(Casual, na.rm = TRUE),
+  SD = sd(Casual, na.rm = TRUE)) 
+cont.vars <- rbind(x1)
+rownames(cont.vars) <- c("Casual")
+kable(cont.vars, caption = "Descriptive Statistics", row.names = TRUE)
+
+```
+
+For Casual bike ride shares the mean is 37.35 people per day. The median is 18 people and the standard devation is 50.24 people. The graph is quite skewed to the right and is unimodel. 
+The categorical counts of each of the weathers is clear is 607 people, misty is 261 and rain/snow has 83 people. 
+The days seem pretty even with most in the 130-140 range.
+The counts of each interacting is not consistant and has variation.
+
+The distribution of days graph seems that it is generally even per day. 
+The distribution of weather there seems to be the most shares and people riding on clear days following with misty and the rain/snow.
+
+
+## Interactions and group means
+```{r, fig.height=4, fig.width=8}
+par(mfrow=c(2, 1))
+# Creating the table of means
+casual_means <- bikes %>% 
+                group_by(Day, Weather) %>%
+                summarize(CasualMean = mean(Casual))
+
+casual_means %>% spread(Weather, CasualMean) %>% pander()
+
+
+# Interaction plot 2
+ggplot(aes(x = as.numeric(Weather), y = CasualMean,
+           color = Day, linetype = Day),
+       data = casual_means) +
+  geom_point() + geom_line() +
+  scale_x_continuous(limits = c(0.5, 3.5),
+                     breaks = 1:3,
+                     labels = weather_type) +
+  labs(x = "Weather",
+       y = "Number of Casual Riders",
+       title = "Interaction between Number of Riders and Weather",
+       color = "Day of Week",
+       linetype = "Day of Week")
+
+```
+**Interaction plot**:
+There is no interaction in this graph. The graph mostly shows that there is a generally same amount of change of magnitude between each of the days and there is a downward trend from clear to misty and from misty to rain/snow. There is variation between a couple of days but most do not vear too far. Not all of the days are parallel to each other but there is not too much change. 
+
+
+**Table of means**:
+The means have 3x7 (21) different combinations. The means of Saturday on a clear day has the most shared passengers. Friday on rain/snow days on the other hand have the most amount of people sharing bikes.
+
+# Modeling
+
+**Assumptions:**
+The first thing I have to do is to transform the response variable because it is scewed to the right. Therefore I used a logirithmic transformation: That transformation made sure that there is normality. Now that it looks more normal we can check the residuals. There seems to be constant spread. Although the rule of thumb 80.1/4.113 (largest st.dev / smallest st.dev) is not less than 2, we can use the Keppel Correction and alpha = 0.025. There also seems to be no definite pattern in the residuals. 
+
+```{r}
+par(mfrow=c(2, 2))
+
+#Tranformed for Normalilty
+bikes <- mutate(bikes, log_casual = log(Casual+1)) 
+hist(bikes$log_casual,
+     main = "Transformed: Log(Casual Bike Rides)",
+     xlab = "log(Number of Riders)")
+
+
+bikes_aov <- aov(log_casual ~ Weather + Day + Weather:Day, data = bikes) 
+#normal plot
+qqPlot(bikes_aov$residuals, main = "QQ-plot")
+#residual plot
+plot(x = fitted(bikes_aov), # fitted values on x axis
+     y = residuals(bikes_aov), # residuals on y axis
+     xlab = "Fitted", # x label
+     ylab = "Residuals", # y label
+     main = "Residuals vs Fitted" # title label
+)
+abline(h = 0) # draw a horizontal line at 0
+
+
+### Table of standard deviations ###
+bikes %>%                                 # take our dataset mum
+  group_by(Weather, Day) %>%  # group it by test result and visibility    
+  summarize(sd_casual = sd(Casual)) %>%     # take the sd of time for each group
+  pander()                              # nicely display in a pander table
+
+
+```
+
+**Two-Way Anova Model**
+
+The number of parameters (iXj)+1 = (7*3)+1 = 22
+*The final model:*
+$$y_{ijk} = \mu_{jk} + \epsilon_{ijk}$$
+
+*The Hypothesis:*
+$$H_0 : \mu_{1} = \mu_{2} = \mu_{3} = \mu_{4} = ... = \mu_{22}$$
+where the mus are all of the different combinations of the different varibles togther.
+$$H_a : \text{ The } \mu\text{s are not all equal.}$$
+*ANOVA Table*
+```{r}
+#ANOVA model
+pander(summary(bikes_aov))
+```
+*S-pooled:*
+S = sqrt(MSE)
+S = 1.455335
+S = 1.46
+This is the average pooled standard deviation of the residuals.
+
+We do not reject the null hypothesis therefore we cannot say that there is any significant interaction between weather and day variables.
+We can look at the pairwise comparisons of 97.5% C.I.'s.
+```{r}
+#97.5% Intervals
+#par(mfrow=c(1, 2))
+#Weather
+bikes_aov1 <- aov(Casual ~ Weather, data = bikes) # run anova
+bikes_tukey1 <- TukeyHSD(bikes_aov1)
+
+# Simple tukey plot
+# (would recommend this one)
+plot(bikes_tukey1,
+     las = 1, 
+     cex.axis = 0.025) # change size of axis labels so they fit on the plot
+bikes_tukey1
+#Day
+bikes_aov2 <- aov(Casual ~ Day, data = bikes) # run anova
+bikes_tukey2 <- TukeyHSD(bikes_aov2)
+
+# Simple tukey plot
+# (would recommend this one)
+plot(bikes_tukey2,
+     las = 1, 
+     cex.axis = 0.025) # change size of axis labels so they fit on the plot
+bikes_tukey2
+``` 
+**Interval 1: Are there significant differences in the means of the different days?**
+It seems that there is significant difference between the everyday other than Sunday with Saturday and everyday other than Saturday with Sunday. These are all of the intervals that do not contain zero menaing that the two means with 97.5% confidence will not be the same. Therefore, Sat-Thurs, Sat-Fri, Sat-Wed, Sat-Tues, and Sat-Mon. Saturday's mean is above all those other days' means. The same can be said about Sunday.
+
+**Interval 2: Is there significance between the means of the different weathers?**
+There is a difference between misty and clear as well as rain and clear days. Both had less than clear days. These are all of the intervals that do not contain zero menaing that the two means with 97.5% confidence will not be the same.
+
+
+# Discussion
+What was significant was the effect of Weather on the amount of people who had shared bike rides. Another explanatory variable was the day of the week that the people had riden the bikes. However, what was not significant was the interaction between the two variables. There were other significant effects of each variable stated above. I learned that there is an effect of weather on the different amounts of people in the streets riding bikes and surprisingly the day of the week affects it as well. What other information I would like to know is if there are difference in pricing, would that affec the amount of people who rides the bikes.
+
+Some criticisms of my project are that I think that there might be some descrepencies with the how I interpreted some things. Like how normal does the response variable of casual riders have to be to really be considered normal. There also may be so issues with the level of knowledge that I know of how to transform things so there might be some human error in that. 
+  
+
